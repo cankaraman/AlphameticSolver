@@ -13,6 +13,7 @@ def parse_input():
 
 
 def parse_genetic_code():
+    # parse unique chars in input string to create a rna like genetic code
     arguments, result = parse_input()
 
     chars = list("".join(arguments))
@@ -30,6 +31,8 @@ GENETIC_CODE = parse_genetic_code()
 
 
 def generate_individual(data):
+    # create individual with unique values. A letter can only a have a one
+    # value. It's a constraint that must stay intact no matter what
     individual = []
 
     while len(GENETIC_CODE) != len(individual):
@@ -40,8 +43,8 @@ def generate_individual(data):
 
 
 def generate_genetic_dictionary(individual):
-
-    individual = generate_individual(None)
+    # creates a dictionary to be used in calculations. Dictionary hold  a value
+    # for each letter in genetic code
     genom_dictionary = {}
     for char, value in zip(GENETIC_CODE, individual):
         genom_dictionary[char] = value
@@ -50,36 +53,93 @@ def generate_genetic_dictionary(individual):
     return genom_dictionary
 
 
-def calc_fitness(individual, data):
-
-    debug = False
+def convert_individual_toint(individual, data):
 
     arguments, result = parse_input()
-    data = generate_genetic_dictionary(individual)
 
-    # find sum of the arguments of the alphametic addition
-    argument_total = 0
+    argument_ints = []
     for argument in arguments:
         argument_string = ""
         for char in argument:
             argument_string += str(data[char])
-        if debug:
-            print("args: ", argument_string)
-        argument_total += int(argument_string)
+        argument_ints.append(int(argument_string))
 
-    # find result of the alphametic addition
     result_string = ""
     for char in result:
         result_string += str(data[char])
 
     result_total = int(result_string)
-    if debug:
-        print("res: ", result_string, "\n", "fitness: ", abs(argument_total -
-                                                             result_total), "\n\n")
 
-    # return the absolute value of diffirence between the two. If it's close to
-    # zero then individual has a good fitness
-    return abs(argument_total - result_total)
+    return argument_ints, result_total
+
+
+def change_a_value(individual, digit_to_change, new_value):
+    # changes a value in indivual with uniqueness of a gene in mind
+    index = individual.index(digit_to_change)
+    if new_value in individual:
+        conflicted_index = individual.index(new_value)
+        not_done = True
+        while not_done:
+            r_int = random.randint(0, 9)
+            if r_int not in individual or r_int == digit_to_change:
+                not_done = False
+
+        individual[conflicted_index] = r_int
+
+    individual[index] = new_value
+
+
+def repair(individual, arguments, result, data):
+    change_argument = random.choice([True, False])
+
+    if change_argument:
+        last_digits = []
+        #last_digits.append(arg % 10 for arg in arguments)
+        for arg in arguments:
+            last_digits.append(arg % 10)
+        digit_to_change = random.choice(last_digits)
+        # TODO same value could be more than one. check later
+        other_digits = [i for i in last_digits if i != digit_to_change]
+        new_value = result % 10 - sum(other_digits) % 10
+        if new_value < 0:
+            new_value += 10
+        change_a_value(individual, digit_to_change, new_value)
+    else:
+        # change result's last digit
+        digit_to_change = result % 10
+        new_value = sum(arguments) % 10
+        change_a_value(individual, digit_to_change, new_value)
+
+    data = generate_genetic_dictionary(individual)
+
+
+def calc_fitness(individual, data):
+
+    debug = False
+    handle_type = "repair"
+    data = generate_genetic_dictionary(individual)
+
+    arguments, result = convert_individual_toint(individual, data)
+    arguments_total = sum(arguments)
+
+    penalty = 1
+    # first digit of the sum of arguments must be equal to fisrt digit of the
+    # result. If not handle the constraint accordingly
+    if arguments_total % 10 != result % 10:
+        # default constraint handling method is repair
+        if handle_type == "repair":
+            repair(individual, arguments, result, data)
+            # try here for Y error
+            arguments, result = convert_individual_toint(individual, data)
+            arguments_total = sum(arguments)
+        else:
+            penalty = 100
+
+    if debug:
+        print("args: ", arguments, "\nres: ", result,
+              "\nfitness: ", abs(arguments_total - result), "\n\n")
+
+    return abs(arguments_total - result) * penalty
 
 
 def crossover_at_random_index(parent_1, parent_2):
@@ -118,8 +178,8 @@ def mutate(individual):
 seed_data = generate_genetic_dictionary(generate_individual(None))
 
 ga = pyeasyga.GeneticAlgorithm(seed_data,
-                               population_size=20,
-                               generations=30,
+                               population_size=40,
+                               generations=200,
                                crossover_probability=0.8,
                                mutation_probability=0.1,
                                elitism=True,
@@ -128,7 +188,21 @@ ga.mutate_function = mutate
 ga.create_individual = generate_individual
 ga.fitness_function = calc_fitness
 ga.crossover_function = crossover_at_random_index
-ga.run()
-print(ga.best_individual())
+count_feasible = 0
+iteraions = 30
 
+for i in range(iteraions):
+    ga.run()
+    best_ind = ga.best_individual()[1]
+    best_fitness = ga.best_individual()[0]
+    genetic_dictionary = generate_genetic_dictionary(best_ind)
+    args, result = convert_individual_toint(best_ind, genetic_dictionary)
+    if best_fitness == 0:
+        count_feasible += 1
+    print("\nBest Fitness: ", best_fitness, "\nBest individual: ", best_ind,
+          "\nGenetic Dictionary: ", genetic_dictionary, "\nArgs: ", args,
+          "\nRes: ", result)
+
+print("\n\nOut of ", iteraions, "iteraions ", count_feasible,
+      " of them were feasible")
 # print(calc_fitness(generate_individual()))
